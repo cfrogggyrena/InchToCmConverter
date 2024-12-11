@@ -1,0 +1,82 @@
+// NOTE: copy it to your ollama.service.ts file
+
+// import required modules
+import { inject, Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, pipe, map, filter } from 'rxjs';
+
+// define constants
+const MODEL = "llama3.2:1b";                // LLM name
+const URL = "http://localhost:11434/api/";  // ollama API, make sure use your own port number
+
+
+// define on interface to hold a single message
+export interface Message
+{
+    role: string;       // user, assistant, system or tool
+    time: string;
+    content: string;
+}
+
+
+@Injectable({
+  providedIn: 'root'
+})
+export class OllamaService
+{
+    // public properties
+    // it is provided by provideHttpClient() helper function,
+    // so import the module in app.config.ts
+    http = inject(HttpClient);
+
+
+    // "generate" API: generate a response fro a given prompt
+    // INPUT: model, prompt, options, stream ...
+    // OUTPUT: model, created_at, response, done, eval_count, eval_duration,...
+    // Ref: https://github.com/ollama/ollama/blob/main/docs/api.md
+    generate(prompt: string = ""): Observable<any>
+    {
+        // construct request body
+        let body =
+        {
+            model: MODEL,
+            prompt: prompt
+        };
+
+        // get response from ollama token by token
+        // NOTE: responseType must be "text" because the response is non-standard JSON format
+        return this.http.post(
+            URL + "generate",
+            body,
+            // NOTE: must use these options to get the response correctly
+            { responseType: "text", observe: "events", reportProgress: true }
+        )
+        // NOTE: Ollama will return multiple responses(events) until completed.
+        //       The response with "type"=3 contains the actual text in partialText property.
+        //       "partialText" contains a sequence of cumulative objects seperating by "\n".
+        .pipe(
+            filter(e => e.type == 3),
+            map((e:any) =>
+            {
+                // convert partialText value (string) to JSON (array of objects)
+                let partials = e.partialText.trim().split("\n");
+                //console.log(partials);
+                return partials.map((e:string) => JSON.parse(e));
+            })
+        );
+    }
+
+
+    // @@TODO:
+    // "chat" API: generate the next message in a chat
+    // INPUT: model, messages{role,content,...}, tools, options, ...
+    // OUTPUT: model, created_at, message{role,content}, done, eval_count, eval_duration
+    // Ref: https://github.com/ollama/ollama/blob/main/docs/api.md#generate-a-chat-completion
+    chat(messages: Message[] = []): Observable<any>
+    {
+        // 1. make a copy of "messages" param to Ollama-specific one, {role,content}
+        // 2. construct request body including {model,messages}
+        // 3. send post request with body and options {responseType, observe, reportProgress}
+        // 4. return Observable object after filter & map the partialTexts
+    }
+}
